@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"document-convert-service-new/config"
+	"document-convert-service-new/storage/idempotency"
 	"document-convert-service-new/storage/s3"
 	"log/slog"
 	"os"
@@ -23,6 +24,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	rdb, err := idempotency.NewRedisClient(cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB)
+	if err != nil {
+		slog.Error("init redis client", "error", err)
+		os.Exit(1)
+	}
+
+	defer rdb.Close()
+
 	data := []byte("Hello, S3!")
 	key := "test/hello.txt"
 	if err := s3Client.PutObject(ctx, cfg.S3Bucket, "text/plain", key, data); err != nil {
@@ -37,4 +46,14 @@ func main() {
 	}
 
 	slog.Info("s3 test ok", "got", string(got))
+
+	redisData, err := rdb.CheckKey(ctx, "tes111")
+	if err != nil {
+		slog.Error("check key in redis", "error", err)
+		os.Exit(1)
+	} else {
+		slog.Info("idempotency key found", "data", redisData)
+	}
+
+	slog.Info("redis test ok", "data", redisData)
 }
