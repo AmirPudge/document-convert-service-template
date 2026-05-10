@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"document-convert-service-new/config"
-	"document-convert-service-new/converter"
-	"document-convert-service-new/storage/idempotency"
-	"document-convert-service-new/storage/s3"
+	"document-convert-service-new/internal/camunda"
+	"document-convert-service-new/internal/converter"
+	"document-convert-service-new/internal/storage/idempotency"
+	"document-convert-service-new/internal/storage/s3"
+
 	"log/slog"
 	"os"
 	"os/signal"
@@ -73,4 +75,10 @@ func main() {
 	slog.Info("html to pdf conversion successful", "pdfSize", len(res))
 
 	slog.Info("redis test ok", "data", redisData)
+
+	camundaClient := camunda.NewCamundaClient(cfg.CamundaBaseURL, cfg.CamundaMessageName)
+	if err := camundaClient.SendMessage(ctx, "test-correlation-key", "test-request-id", "test-pdf-s3-key"); err != nil {
+		slog.Error("send message to camunda", "error", err)
+		os.Exit(1)
+	}
 }

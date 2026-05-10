@@ -1,9 +1,8 @@
 services:
-
   kafka:
     image: apache/kafka:latest
     ports:
-      - "29092:29092"   # хост-инструменты (kafka-ui и т.п.) → localhost:29092
+      - "29092:29092" # хост-инструменты (kafka-ui и т.п.) → localhost:29092
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
@@ -51,8 +50,8 @@ services:
   minio:
     image: minio/minio
     ports:
-      - "9000:9000"   # S3 API
-      - "9001:9001"   # Web console → http://localhost:9001
+      - "9000:9000" # S3 API
+      - "9001:9001" # Web console → http://localhost:9001
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
@@ -63,7 +62,7 @@ services:
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     ports:
-      - "8081:8080"   # http://localhost:8081
+      - "8081:8080" # http://localhost:8081
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
@@ -79,6 +78,16 @@ services:
         until mc alias set local http://minio:9000 minioadmin minioadmin 2>/dev/null; do sleep 1; done;
         mc mb --ignore-existing local/documents;
       "
+
+  camunda:
+    image: camunda/camunda-bpm-platform:latest
+    ports:
+      - "8081:8080"
+    environment:
+      DB_DRIVER: h2
+      DB_URL: jdbc:h2:./camunda-h2-db
+    volumes:
+      - camunda_data:/camunda/data
 
   app:
     build: .
@@ -113,3 +122,4 @@ volumes:
   redis_data:
   postgres_data:
   minio_data:
+  camunda_data:
