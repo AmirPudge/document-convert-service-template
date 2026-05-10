@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"document-convert-service-new/config"
+	"document-convert-service-new/converter"
 	"document-convert-service-new/storage/idempotency"
 	"document-convert-service-new/storage/s3"
 	"log/slog"
@@ -54,6 +55,22 @@ func main() {
 	} else {
 		slog.Info("idempotency key found", "data", redisData)
 	}
+
+	htmlData := []byte(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body { font-family: sans-serif; } .box { color: red; font-size: 24px; }</style></head><body><div class="box">Привет, мир! Тест кириллицы.</div></body></html>`)
+
+	res, err := converter.HTMLToPDF(ctx, htmlData)
+	if err != nil {
+		slog.Error("convert html to pdf", "error", err)
+		os.Exit(1)
+	}
+
+	if err := os.WriteFile("output.pdf", res, 0644); err != nil {
+		slog.Error("save pdf to file", "error", err)
+		os.Exit(1)
+	}
+	slog.Info("pdf saved to output.pdf")
+
+	slog.Info("html to pdf conversion successful", "pdfSize", len(res))
 
 	slog.Info("redis test ok", "data", redisData)
 }
