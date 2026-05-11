@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -18,7 +19,7 @@ type CamundaClient struct {
 
 func NewCamundaClient(baseURL, messageName string) *CamundaClient {
 	return &CamundaClient{
-		baseURL:     baseURL,
+		baseURL:     strings.TrimSpace(baseURL),
 		messageName: messageName,
 		http:        &http.Client{Timeout: 60 * time.Second},
 	}
