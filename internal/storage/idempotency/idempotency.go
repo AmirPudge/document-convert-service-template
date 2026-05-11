@@ -26,8 +26,8 @@ func NewRedisClient(addr, password string, db int) (*RedisClient, error) {
 	return &RedisClient{rdb: rdb}, nil
 }
 
-func (r *RedisClient) CheckKey(ctx context.Context, requestID string) (bool, error) {
-	return r.rdb.SetNX(ctx, requestID, "AMIR", TTL).Result()
+func (r *RedisClient) TryAcquire(ctx context.Context, requestID string) (bool, error) {
+	return r.rdb.SetNX(ctx, requestID, "1", TTL).Result()
 }
 
 func (r *RedisClient) DeleteKey(ctx context.Context, requestID string) error {

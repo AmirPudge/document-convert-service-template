@@ -50,7 +50,7 @@ func main() {
 
 	slog.Info("s3 test ok", "got", string(got))
 
-	redisData, err := rdb.CheckKey(ctx, "tes111")
+	redisData, err := rdb.TryAcquire(ctx, "tes111")
 	if err != nil {
 		slog.Error("check key in redis", "error", err)
 		os.Exit(1)
