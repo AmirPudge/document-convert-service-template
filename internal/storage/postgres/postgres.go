@@ -19,21 +19,22 @@ func NewPostgresClient(ctx context.Context, dsn string) (*PostgresClient, error)
 	}
 
 	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
 		return nil, fmt.Errorf("pgxpool ping: %w", err)
 	}
 
 	return &PostgresClient{pool: pool}, nil
 }
 
-func (p *PostgresClient) UpsertStatus(ctx context.Context, requestId, status, pdfS3Key string) error {
+func (p *PostgresClient) UpsertStatus(ctx context.Context, requestID, status, pdfS3Key string) error {
 	_, err := p.pool.Exec(ctx, `
-		INSERT INTO document_status (request_id, status, pdf_s3_key, updated_at)
+		INSERT INTO document_statuses (request_id, status, pdf_s3_key, updated_at)
 		VALUES ($1, $2, $3, NOW())
 		ON CONFLICT (request_id) DO UPDATE SET
 			status 	   = EXCLUDED.status,
 			pdf_s3_key = EXCLUDED.pdf_s3_key,
 			updated_at = NOW()
-	`, requestId, status, pdfS3Key)
+	`, requestID, status, pdfS3Key)
 	if err != nil {
 		return fmt.Errorf("upsert doc_status: %w", err)
 	}

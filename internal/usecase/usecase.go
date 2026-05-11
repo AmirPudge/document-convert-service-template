@@ -31,7 +31,7 @@ func NewUseCase(redis *idempotency.RedisClient, camunda *camunda.CamundaClient, 
 	}
 }
 
-func pdfKeyForm(htmlKey string) string {
+func pdfKeyFrom(htmlKey string) string {
 	name := strings.TrimSuffix(path.Base(htmlKey), ".html")
 	return "pdf/" + name + ".pdf"
 }
@@ -51,7 +51,7 @@ func (u *UseCase) Process(ctx context.Context, data []byte) error {
 	}
 	if !acquired {
 		slog.Info("skipping duplicate", "request_id", req.RequestID)
-		return fmt.Errorf("request already processing")
+		return nil
 	}
 
 	if err := u.pipeline(ctx, &req); err != nil {
@@ -74,14 +74,14 @@ func (u *UseCase) pipeline(ctx context.Context, req *model.ConvertRequest) error
 
 	pdf, err := converter.HTMLToPDF(ctx, html)
 	if err != nil {
-		_ = u.postgres.UpsertStatus(ctx, req.RequestID, "error", "convert html to pdf")
+		_ = u.postgres.UpsertStatus(ctx, req.RequestID, "error", "")
 		slog.Error("convert html to pdf", "error", err, "request_id", req.RequestID)
 		return fmt.Errorf("convert html to pdf: %w", err)
 	}
 
-	pdfKey := pdfKeyForm(req.HtmlS3Key)
+	pdfKey := pdfKeyFrom(req.HtmlS3Key)
 	if err := u.s3.PutObject(ctx, req.Bucket, "application/pdf", pdfKey, pdf); err != nil {
-		_ = u.postgres.UpsertStatus(ctx, req.RequestID, "error", "upload pdf to s3")
+		_ = u.postgres.UpsertStatus(ctx, req.RequestID, "error", "")
 		slog.Error("upload pdf to s3", "error", err, "bucket", req.Bucket, "key", pdfKey)
 		return fmt.Errorf("upload pdf to s3: %w", err)
 	}
@@ -91,7 +91,7 @@ func (u *UseCase) pipeline(ctx context.Context, req *model.ConvertRequest) error
 		return fmt.Errorf("update status in postgres: %w", err)
 	}
 
-	if err := u.camunda.SendMessage(ctx, "requestID", req.RequestID, pdfKey); err != nil {
+	if err := u.camunda.SendMessage(ctx, req.CollelationKey, req.RequestID, pdfKey); err != nil {
 		slog.Error("send camunda message", "error", err, "request_id", req.RequestID)
 		return fmt.Errorf("send camunda message: %w", err)
 	}
