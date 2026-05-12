@@ -4,9 +4,15 @@ import (
 	"context"
 	"document-convert-service-new/config"
 	"document-convert-service-new/internal/camunda"
-	"document-convert-service-new/internal/converter"
+	"document-convert-service-new/internal/consumer"
+	"document-convert-service-new/internal/model"
+	"document-convert-service-new/internal/pool"
 	"document-convert-service-new/internal/storage/idempotency"
+	"document-convert-service-new/internal/storage/postgres"
 	"document-convert-service-new/internal/storage/s3"
+	"document-convert-service-new/internal/usecase"
+	"runtime"
+	"time"
 
 	"log/slog"
 	"os"
@@ -27,12 +33,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	db, err := postgres.NewPostgresClient(ctx, cfg.PostgresDSN)
+	if err != nil {
+		slog.Error("init postgres client", "error", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
 	rdb, err := idempotency.NewRedisClient(cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB)
 	if err != nil {
 		slog.Error("init redis client", "error", err)
 		os.Exit(1)
 	}
-
 	defer rdb.Close()
 
 	data := []byte("Hello, S3!")
@@ -42,43 +54,40 @@ func main() {
 		os.Exit(1)
 	}
 
-	got, err := s3Client.GetObject(ctx, cfg.S3Bucket, key)
-	if err != nil {
-		slog.Error("get object from s3", "error", err)
-		os.Exit(1)
-	}
-
-	slog.Info("s3 test ok", "got", string(got))
-
-	redisData, err := rdb.TryAcquire(ctx, "tes111")
-	if err != nil {
-		slog.Error("check key in redis", "error", err)
-		os.Exit(1)
-	} else {
-		slog.Info("idempotency key found", "data", redisData)
-	}
-
-	htmlData := []byte(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body { font-family: sans-serif; } .box { color: red; font-size: 24px; }</style></head><body><div class="box">Привет, мир! Тест кириллицы.</div></body></html>`)
-
-	res, err := converter.HTMLToPDF(ctx, htmlData)
-	if err != nil {
-		slog.Error("convert html to pdf", "error", err)
-		os.Exit(1)
-	}
-
-	if err := os.WriteFile("output.pdf", res, 0644); err != nil {
-		slog.Error("save pdf to file", "error", err)
-		os.Exit(1)
-	}
-	slog.Info("pdf saved to output.pdf")
-
-	slog.Info("html to pdf conversion successful", "pdfSize", len(res))
-
-	slog.Info("redis test ok", "data", redisData)
-
 	camundaClient := camunda.NewCamundaClient(cfg.CamundaBaseURL, cfg.CamundaMessageName)
-	if err := camundaClient.SendMessage(ctx, "test-correlation-key", "test-request-id", "test-pdf-s3-key"); err != nil {
-		slog.Error("send message to camunda", "error", err)
-		os.Exit(1)
+	usecase := usecase.NewUseCase(rdb, camundaClient, db, s3Client)
+
+	dispatch := make(chan model.Job, cfg.ChannelBuffer)
+	numWorkers := runtime.NumCPU()
+	wg := pool.RunWorkerPool(dispatch, usecase, numWorkers)
+
+	slog.Info("starting", "topic", cfg.KafkaTopic, "workers", numWorkers)
+
+	go func() {
+		defer close(dispatch)
+
+		if err := consumer.RunConsumerGroup(ctx, cfg.KafkaBrokers, cfg.KafkaGroupID, cfg.KafkaTopic, dispatch); err != nil {
+			if ctx.Err() == nil {
+				slog.Error("consumer stopped unexpectedly", "err", err)
+				cancel()
+			}
+		}
+	}()
+
+	<-ctx.Done()
+	slog.Info("signal received, draining workers")
+
+	drainDone := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(drainDone)
+	}()
+
+	select {
+	case <-drainDone:
+		slog.Info("all workers drained, exiting")
+	case <-time.After(30 * time.Second):
+		slog.Warn("timeout reached, force exiting")
 	}
+
 }
