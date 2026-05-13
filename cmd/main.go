@@ -47,13 +47,6 @@ func main() {
 	}
 	defer rdb.Close()
 
-	data := []byte("Hello, S3!")
-	key := "test/hello.txt"
-	if err := s3Client.PutObject(ctx, cfg.S3Bucket, "text/plain", key, data); err != nil {
-		slog.Error("put object to s3", "error", err)
-		os.Exit(1)
-	}
-
 	camundaClient := camunda.NewCamundaClient(cfg.CamundaBaseURL, cfg.CamundaMessageName)
 	usecase := usecase.NewUseCase(rdb, camundaClient, db, s3Client)
 
